@@ -30,7 +30,7 @@ import {
 
 export const CampaignList = () => {
   const { claims } = useUserStore()
-  const orgId = claims?.orgId || 'org_demo'
+  const orgId = claims?.orgId || ''
 
   const { campaigns, addCampaign, updateCampaign, deleteCampaign, setCampaigns } = useMarketingStore()
 

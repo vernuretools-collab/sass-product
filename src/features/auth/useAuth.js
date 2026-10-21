@@ -46,11 +46,11 @@ export const useAuth = () => {
           },
           (err) => {
             console.warn('User doc snapshot offline warning:', err.message)
-            setUser(firebaseUser, null, claims || { orgId: 'org_demo', role: 'employee', tier: 'company' })
+            setUser(firebaseUser, null, claims || { orgId: null, role: 'employee', tier: 'company' })
           }
         )
 
-        const activeOrgId = claims?.orgId || 'org_demo'
+        const activeOrgId = claims?.orgId || null
 
         if (activeOrgId) {
           const orgRef = doc(db, 'organizations', activeOrgId)
@@ -81,7 +81,7 @@ export const useAuth = () => {
         }
       } catch (err) {
         console.warn('Error establishing user session context:', err)
-        setUser(firebaseUser, null, { orgId: 'org_demo', role: 'employee', tier: 'company' })
+        setUser(firebaseUser, null, { orgId: null, role: 'employee', tier: 'company' })
       }
     })
 

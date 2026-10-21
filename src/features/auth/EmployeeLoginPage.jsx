@@ -4,7 +4,7 @@ import { UserCheck, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react'
 import { Button } from '../../shared/components/ui/Button'
 import { Input } from '../../shared/components/ui/Input'
 import { Card } from '../../shared/components/ui/Card'
-import { loginWithEmail, loginWithGoogle } from '../../shared/services/authService'
+import { loginWithEmail, fetchCustomClaims, logoutUser } from '../../shared/services/authService'
 import { useUserStore } from '../../shared/stores/userStore'
 
 export const EmployeeLoginPage = () => {
@@ -28,11 +28,14 @@ export const EmployeeLoginPage = () => {
 
     try {
       const user = await loginWithEmail(email, password)
-      setUser(
-        user,
-        null,
-        { orgId: 'org_real', role: 'employee', tier: 'company' }
-      )
+      const claims = await fetchCustomClaims(user, true)
+      const orgId = claims?.orgId || null
+      if (!orgId) {
+        await logoutUser()
+        setError('This account is not in a company circle. Ask your company admin for an invite.')
+        return
+      }
+      setUser(user, null, { ...claims, orgId, role: claims?.role || 'employee', tier: claims?.tier || 'company' })
       navigate('/projects/tasks')
     } catch (err) {
       console.error('Firebase Auth error:', err)
@@ -49,21 +52,7 @@ export const EmployeeLoginPage = () => {
   }
 
   const handleGoogleClick = async () => {
-    try {
-      setLoading(true)
-      const user = await loginWithGoogle()
-      setUser(
-        user,
-        null,
-        { orgId: 'org_real', role: 'employee', tier: 'company' }
-      )
-      navigate('/projects/tasks')
-    } catch (err) {
-      console.error('Google SSO Error:', err)
-      setError('Failed to sign in with Google SSO.')
-    } finally {
-      setLoading(false)
-    }
+    setError('Google sign-in does not join a company circle. Use the email from your company admin.')
   }
 
   return (

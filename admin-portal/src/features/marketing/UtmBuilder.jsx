@@ -11,7 +11,7 @@ import { Megaphone, Calendar, Link as LinkIcon, Copy, Check, Sparkles } from 'lu
 
 export const UtmBuilder = () => {
   const { claims } = useUserStore()
-  const orgId = claims?.orgId || 'org_demo'
+  const orgId = claims?.orgId || ''
 
   const { campaigns, setCampaigns } = useMarketingStore()
 

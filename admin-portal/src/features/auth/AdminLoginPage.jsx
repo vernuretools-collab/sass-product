@@ -9,6 +9,7 @@ import haloLogo from '../../assets/halologo.png'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../../shared/services/firebaseService'
 import { loginWithEmail, fetchCustomClaims, getUserDoc, logoutUser } from '../../shared/services/authService'
+import { rejectSuspendedCompany } from '../../../../shared/supabase/companyStatus.js'
 
 const ADMIN_ROLES = new Set(['admin', 'owner', 'superadmin'])
 
@@ -77,8 +78,15 @@ export const AdminLoginPage = () => {
       }
 
       const freshClaims = await fetchCustomClaims(firebaseUser, true)
-      const orgId = freshClaims?.orgId || claims?.orgId || userDoc?.orgId || 'org_demo'
-      setUser(firebaseUser, { ...(userDoc || {}), role: access.role }, {
+      const orgId = freshClaims?.orgId || claims?.orgId || userDoc?.orgId || null
+      if (!orgId) {
+        await logoutUser()
+        setError('This account is not in a company circle. Ask the platform administrator to open your company.')
+        setLoading(false)
+        return
+      }
+      await rejectSuspendedCompany(logoutUser)
+      setUser(firebaseUser, { ...(userDoc || {}), role: access.role, orgId }, {
         ...freshClaims,
         orgId,
         role: access.role,

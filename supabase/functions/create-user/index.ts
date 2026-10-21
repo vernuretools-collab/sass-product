@@ -148,21 +148,15 @@ Deno.serve(async (req) => {
     return json({ error: 'unauthenticated' }, 401)
   }
 
-  const { data: callerRows } = await admin.from('profiles').select('id,data,org_id').eq('auth_id', authData.user.id)
-  const caller = (callerRows || []).sort((a, b) => {
-    const ar = String(a?.data?.role || '').toLowerCase()
-    const br = String(b?.data?.role || '').toLowerCase()
-    const rank = (r) => (['admin', 'owner', 'superadmin'].includes(r) ? 0 : 1)
-    return rank(ar) - rank(br)
-  })[0]
-  const role = String(caller?.data?.role || authData.user.app_metadata?.role || '').toLowerCase()
+  const role = String(authData.user.app_metadata?.role || '').toLowerCase()
   if (!['admin', 'owner', 'superadmin'].includes(role)) {
     return json({ error: 'permission-denied' }, 403)
   }
 
-  const orgId = String(
-    caller?.data?.orgId || caller?.org_id || authData.user.app_metadata?.orgId || 'org_demo'
-  )
+  const orgId = String(authData.user.app_metadata?.orgId || '')
+  if (!orgId) {
+    return json({ error: 'This account is not in a company circle' }, 403)
+  }
 
   const body = await req.json()
   const password = String(body.password || '')
@@ -184,17 +178,21 @@ Deno.serve(async (req) => {
     if (!uid || uid.length > 80) return json({ error: 'A valid user id is required' }, 400)
     if (uid === authData.user.id) return json({ error: 'You cannot delete your own account' }, 400)
 
-    const { data: byId, error: byIdErr } = await admin.from('profiles').select('id,auth_id,data').eq('id', uid).maybeSingle()
+    const { data: byId, error: byIdErr } = await admin.from('profiles').select('id,auth_id,org_id,data').eq('id', uid).maybeSingle()
     if (byIdErr) return json({ error: byIdErr.message }, 400)
     let target = byId
     if (!target) {
-      const { data: byAuth, error: byAuthErr } = await admin.from('profiles').select('id,auth_id,data').eq('auth_id', uid).maybeSingle()
+      const { data: byAuth, error: byAuthErr } = await admin.from('profiles').select('id,auth_id,org_id,data').eq('auth_id', uid).maybeSingle()
       if (byAuthErr) return json({ error: byAuthErr.message }, 400)
       target = byAuth
     }
     const targetRole = String(target?.data?.role || '').toLowerCase()
     if (target && targetRole && targetRole !== 'client') {
       return json({ error: 'Only client portal users can be deleted here' }, 400)
+    }
+    const targetOrg = String(target?.org_id || target?.data?.orgId || '')
+    if (target && targetOrg !== orgId) {
+      return json({ error: 'permission-denied' }, 403)
     }
 
     const authId = String(target?.auth_id || uid)
@@ -205,9 +203,9 @@ Deno.serve(async (req) => {
     }
 
     const [onboardById, onboardByUser, profileDelete] = await Promise.all([
-      admin.from('client_onboarding').delete().eq('id', profileId),
-      admin.from('client_onboarding').delete().eq('user_id', profileId),
-      admin.from('profiles').delete().eq('id', profileId),
+      admin.from('client_onboarding').delete().eq('id', profileId).eq('org_id', orgId),
+      admin.from('client_onboarding').delete().eq('user_id', profileId).eq('org_id', orgId),
+      admin.from('profiles').delete().eq('id', profileId).eq('org_id', orgId),
     ])
     const cleanupErr = onboardById.error || onboardByUser.error || profileDelete.error
     if (cleanupErr) return json({ error: cleanupErr.message }, 400)
@@ -365,10 +363,15 @@ Deno.serve(async (req) => {
     return json({ error: kind === 'client' ? 'username and password required' : 'email and password required' }, 400)
   }
 
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
+    app_metadata: {
+      role: kind === 'client' ? 'client' : kind === 'admin' ? 'admin' : 'employee',
+      orgId,
+      tier: kind === 'client' ? 'client' : 'company',
+    },
     user_metadata: { displayName: body.displayName || username || email.split('@')[0], username: username || null },
   })
   if (createErr) return json({ error: createErr.message }, 400)

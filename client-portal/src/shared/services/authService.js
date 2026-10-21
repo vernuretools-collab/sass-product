@@ -71,7 +71,7 @@ export const fetchCustomClaims = async (user, forceRefresh = false) => {
     return tokenResult.claims || {}
   } catch (err) {
     console.warn('Could not fetch custom claims (mock/offline mode):', err.message)
-    return { orgId: 'org_demo', role: 'owner', tier: 'company' }
+    return null
   }
 }
 

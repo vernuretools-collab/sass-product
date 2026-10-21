@@ -8,14 +8,17 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from '../../../shared/services/firebaseService'
+import { currentCircleId } from '../../../../shared/supabase/currentCircle.js'
 
 /**
  * Fetch all registered client accounts from Firestore /users where role == 'client'
  */
 export const getClientsFromDb = async () => {
   try {
+    const orgId = await currentCircleId()
+    if (!orgId) return []
     const usersRef = collection(db, 'users')
-    const q = query(usersRef, where('role', '==', 'client'))
+    const q = query(usersRef, where('role', '==', 'client'), where('orgId', '==', orgId))
     const snap = await getDocs(q)
     return snap.docs.map((docSnap) => ({
       clientId: docSnap.id,

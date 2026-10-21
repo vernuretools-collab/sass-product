@@ -1,4 +1,5 @@
 import { supabase } from './client.js'
+import { currentCircleId } from './currentCircle.js'
 import { flattenPath, resolveCollection } from './pathMap.js'
 import {
   ROW_SELECT,
@@ -416,6 +417,13 @@ export async function setDoc(ref, data, options = {}) {
   }
   const storageId = existingRow?.id || scopedStorageId(ref, ref.id)
   const row = { ...scopeFields(ref, storageId, payload), created_at: existingRow?.created_at || nowIso() }
+  if (!row.org_id) {
+    const circleId = await currentCircleId()
+    if (circleId) {
+      row.org_id = circleId
+      row.data = { ...(row.data || {}), orgId: circleId }
+    }
+  }
   if (ref.table === 'profiles') {
     const { data: sess } = await supabase.auth.getSession()
     if (sess?.session?.user && (payload.auth_id || sess.session.user.email === payload.email)) {
@@ -441,6 +449,13 @@ export async function updateDoc(ref, updates) {
   const payload = applyPatch(base, updates)
   const storageId = existingRow?.id || scopedStorageId(ref, ref.id)
   const row = scopeFields(ref, storageId, unwrapValue(payload))
+  if (!row.org_id) {
+    const circleId = await currentCircleId()
+    if (circleId) {
+      row.org_id = circleId
+      row.data = { ...(row.data || {}), orgId: circleId }
+    }
+  }
   if (!existingRow) {
     const err = new Error('No document to update')
     err.code = 'not-found'

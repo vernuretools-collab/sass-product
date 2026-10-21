@@ -25,7 +25,7 @@ export const LeadList = () => {
 
   useEffect(() => {
     const fetchRealLeads = async () => {
-      const data = await getLeads('org_real')
+      const data = await getLeads(null)
       if (data && data.length > 0) {
         setLeads(data)
       }
@@ -38,12 +38,12 @@ export const LeadList = () => {
     if (!newStg) return
 
     updateLeadStage(leadId, newStg.id, newStg.name)
-    await updateLeadStageInDb('org_real', leadId, newStg.id, newStg.name)
+    await updateLeadStageInDb(null, leadId, newStg.id, newStg.name)
   }
 
   const handleDeleteLead = async (leadId) => {
     deleteLead(leadId)
-    await deleteLeadFromDb('org_real', leadId)
+    await deleteLeadFromDb(null, leadId)
   }
 
   const filtered = leads.filter((l) => {

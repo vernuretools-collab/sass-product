@@ -5,7 +5,7 @@ import { Button } from '../../shared/components/ui/Button'
 import { Input } from '../../shared/components/ui/Input'
 import { Card } from '../../shared/components/ui/Card'
 import haloLogo from '../../assets/halologo.png'
-import { loginWithEmail, loginWithGoogle } from '../../shared/services/authService'
+import { loginWithEmail, fetchCustomClaims } from '../../shared/services/authService'
 import { useUserStore } from '../../shared/stores/userStore'
 
 export const AdminLoginPage = () => {
@@ -29,7 +29,14 @@ export const AdminLoginPage = () => {
 
     try {
       const user = await loginWithEmail(email, password)
-      setUser(user, { orgId: 'org_demo', role: 'owner', tier: 'company' })
+      const claims = await fetchCustomClaims(user, true)
+      const orgId = claims?.orgId || null
+      if (!orgId) {
+        setError('This account is not in a company circle.')
+        setLoading(false)
+        return
+      }
+      setUser(user, null, { ...claims, orgId, role: claims?.role || 'owner', tier: claims?.tier || 'company' })
       navigate('/dashboard')
     } catch (err) {
       console.error('Login error:', err)
@@ -46,21 +53,7 @@ export const AdminLoginPage = () => {
   }
 
   const handleGoogleClick = async () => {
-    try {
-      setLoading(true)
-      const user = await loginWithGoogle()
-      setUser(
-        user,
-        null,
-        { orgId: 'org_real', role: 'owner', tier: 'company' }
-      )
-      navigate('/dashboard')
-    } catch (err) {
-      console.error('Google SSO error:', err)
-      setError('Google Sign In failed: ' + err.message)
-    } finally {
-      setLoading(false)
-    }
+    setError('Google sign-in does not create a company circle. Use email signup instead.')
   }
 
   return (

@@ -14,6 +14,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../../../shared/services/firebaseService'
+import { currentCircleId } from '../../../../../shared/supabase/currentCircle.js'
 import {
   buildEmployeeMonthlyReport,
   getMonthDateBounds,
@@ -60,7 +61,9 @@ function collectEmployeeIdentityIds(rowId, data = {}) {
  * Fetch all employee profiles from Firestore /employees
  */
 export const getEmployees = async () => {
-  const snap = await getDocs(collection(db, 'employees'))
+  const orgId = await currentCircleId()
+  if (!orgId) return []
+  const snap = await getDocs(query(collection(db, 'employees'), where('orgId', '==', orgId)))
   return snap.docs.map((d) => {
     const data = d.data() || {}
     return {
@@ -98,18 +101,20 @@ export const getLeaveRequests = async () => {
  * Add a new employee to Firestore
  */
 export const createEmployee = async (employeeData) => {
+  const orgId = await currentCircleId()
+  if (!orgId) throw new Error('Sign in to a company circle before adding employees.')
   try {
     const uid = `emp_${Date.now()}`
     await setDoc(doc(db, 'employees', uid), {
       ...employeeData,
+      orgId,
       uid,
       createdAt: serverTimestamp(),
     })
-    return { uid, employeeId: uid, ...employeeData }
+    return { uid, employeeId: uid, orgId, ...employeeData }
   } catch (err) {
     console.error('Error creating employee in Firestore:', err)
-    const uid = `emp_${Date.now()}`
-    return { uid, employeeId: uid, ...employeeData }
+    throw err
   }
 }
 
@@ -185,8 +190,7 @@ const resolveEmployeeUidForLeave = async (leaveData) => {
   if (leaveData?.employeeId) return leaveData.employeeId
 
   try {
-    const snap = await getDocs(collection(db, 'employees'))
-    const employees = snap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+    const employees = await getEmployees()
 
     if (leaveData?.employeeEmail) {
       const byEmail = employees.find(

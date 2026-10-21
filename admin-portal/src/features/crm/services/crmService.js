@@ -7,10 +7,10 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  orderBy,
-  serverTimestamp,
+  where,
 } from 'firebase/firestore'
 import { db } from '../../../shared/services/firebaseService'
+import { currentCircleId } from '../../../../../shared/supabase/currentCircle.js'
 
 /**
  * Fetch custom CRM pipeline stages from Firestore
@@ -42,12 +42,16 @@ export const createCrmStageInDb = async (stageData) => {
 /**
  * Fetch all leads from Firestore
  */
-export const getLeads = async (orgId = 'org_real') => {
+export const getLeads = async () => {
   try {
+    const orgId = await currentCircleId()
+    if (!orgId) return []
     const leadsRef = collection(db, 'leads')
-    const q = query(leadsRef, orderBy('createdAt', 'desc'))
+    const q = query(leadsRef, where('orgId', '==', orgId))
     const snap = await getDocs(q)
-    return snap.docs.map((docSnap) => ({ leadId: docSnap.id, ...docSnap.data() }))
+    return snap.docs
+      .map((docSnap) => ({ leadId: docSnap.id, ...docSnap.data() }))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
   } catch (err) {
     console.error('Error fetching leads from Firestore:', err)
     return []
@@ -57,7 +61,9 @@ export const getLeads = async (orgId = 'org_real') => {
 /**
  * Create a new lead document in Firestore
  */
-export const createLead = async (orgId = 'org_real', leadData) => {
+export const createLead = async (_orgId, leadData) => {
+  const orgId = await currentCircleId()
+  if (!orgId) throw new Error('Sign in to a company circle before adding leads.')
   try {
     const leadsRef = collection(db, 'leads')
     const docRef = await addDoc(leadsRef, {
@@ -66,10 +72,10 @@ export const createLead = async (orgId = 'org_real', leadData) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
-    return { leadId: docRef.id, ...leadData }
+    return { leadId: docRef.id, orgId, ...leadData }
   } catch (err) {
     console.error('Error creating lead in Firestore:', err)
-    return { leadId: `lead_${Date.now()}`, ...leadData }
+    throw err
   }
 }
 

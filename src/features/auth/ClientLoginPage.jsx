@@ -33,7 +33,7 @@ export const ClientLoginPage = () => {
       setUser(
         { uid: `client_${Date.now()}`, email: loginEmail, displayName: 'Acme Client Rep' },
         null,
-        { orgId: 'org_demo', role: 'client', tier: 'client', clientId: 'client_01' }
+        { orgId: null, role: 'client', tier: 'client', clientId: 'client_01' }
       )
       navigate('/portal')
       return
@@ -42,10 +42,16 @@ export const ClientLoginPage = () => {
     try {
       const firebaseUser = await loginWithEmail(loginEmail, password)
       const claims = await fetchCustomClaims(firebaseUser)
+      const orgId = claims?.orgId || null
+      if (!orgId) {
+        setError('This account is not in a company circle. Ask your company admin for an invite.')
+        setLoading(false)
+        return
+      }
       setUser(
         firebaseUser,
         null,
-        claims || { orgId: 'org_demo', role: 'client', tier: 'client', clientId: firebaseUser.uid }
+        { ...claims, orgId, role: claims?.role || 'client', tier: claims?.tier || 'client', clientId: firebaseUser.uid }
       )
       navigate('/portal')
     } catch (err) {
@@ -65,12 +71,7 @@ export const ClientLoginPage = () => {
   }
 
   const handleGoogleClick = async () => {
-    setUser(
-      { uid: `client_g_${Date.now()}`, email: 'client.acme@acme.com', displayName: 'Acme Account Client' },
-      null,
-      { orgId: 'org_demo', role: 'client', tier: 'client', clientId: 'client_01' }
-    )
-    navigate('/portal')
+    setError('Google sign-in does not join a company circle. Use the username from your company admin.')
   }
 
   return (

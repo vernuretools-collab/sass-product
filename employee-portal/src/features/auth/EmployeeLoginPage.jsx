@@ -8,6 +8,7 @@ import { useUserStore } from '../../stores/userStore'
 import haloLogo from '../../assets/halologo.png'
 import { loginWithEmail, logoutUser, signupWithEmail, fetchCustomClaims, getUserDoc } from '../../shared/services/authService'
 import { isJoiningAccount } from '../../../../shared/supabase/employeeOnboarding.js'
+import { rejectSuspendedCompany } from '../../../../shared/supabase/companyStatus.js'
 
 export const EmployeeLoginPage = () => {
   const navigate = useNavigate()
@@ -42,7 +43,13 @@ export const EmployeeLoginPage = () => {
         return
       }
       const userDoc = await getUserDoc(firebaseUser.uid, firebaseUser.email)
-      const orgId = claims?.orgId || userDoc?.orgId || 'org_demo'
+      const orgId = claims?.orgId || userDoc?.orgId || null
+      if (!orgId) {
+        await logoutUser()
+        setError('This account is not in a company circle. Ask your company admin for an invite.')
+        return
+      }
+      await rejectSuspendedCompany(logoutUser)
       setUser(firebaseUser, userDoc || null, {
         ...claims,
         orgId,

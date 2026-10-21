@@ -7,7 +7,8 @@ import { Card } from '../../components/ui/Card'
 import { useUserStore } from '../../stores/userStore'
 import { useUIStore } from '../../stores/uiStore'
 import haloLogo from '../../assets/halologo.png'
-import { loginWithEmail, fetchCustomClaims } from '../../shared/services/authService'
+import { loginWithEmail, fetchCustomClaims, logoutUser } from '../../shared/services/authService'
+import { rejectSuspendedCompany } from '../../../../shared/supabase/companyStatus.js'
 import {
   getClientOnboardingDoc,
   normalizeOnboardingStatus,
@@ -42,6 +43,14 @@ export const ClientLoginPage = () => {
     try {
       const firebaseUser = await loginWithEmail(username.trim(), password)
       const claims = await fetchCustomClaims(firebaseUser)
+      const orgId = claims?.orgId || null
+      if (!orgId) {
+        await logoutUser()
+        setError('This account is not in a company circle. Ask your company admin for an invite.')
+        setLoading(false)
+        return
+      }
+      await rejectSuspendedCompany(logoutUser)
       const onboardingDoc = await getClientOnboardingDoc(firebaseUser.uid)
 
       const onboardingStatus = normalizeOnboardingStatus(onboardingDoc?.onboardingStatus)
@@ -60,7 +69,7 @@ export const ClientLoginPage = () => {
       setUser(
         firebaseUser,
         userDocData,
-        { orgId: 'org_real', role: 'client', tier: 'client', ...claims }
+        { ...claims, orgId, role: claims?.role || 'client', tier: 'client' }
       )
 
       if (portalUnlocked) {

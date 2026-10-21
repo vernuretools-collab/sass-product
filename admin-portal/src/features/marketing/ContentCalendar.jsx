@@ -30,7 +30,7 @@ import {
 
 export const ContentCalendar = () => {
   const { claims } = useUserStore()
-  const orgId = claims?.orgId || 'org_demo'
+  const orgId = claims?.orgId || ''
 
   const { contentItems, addContentItem, updateContentItem, setContentItems, deleteContentItem } =
     useMarketingStore()

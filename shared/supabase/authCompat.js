@@ -5,15 +5,14 @@ const ADMIN_ROLES = new Set(['admin', 'owner', 'superadmin'])
 
 function claimsFromUser(user, profile) {
   const appMeta = user?.app_metadata || {}
-  const meta = { ...appMeta, ...(user?.user_metadata || {}) }
   const data = profile?.data || {}
   const appRole = String(appMeta.role || '').toLowerCase()
   const joining = appRole === 'employee_onboarding'
   return {
-    orgId: meta.orgId || data.orgId || profile?.org_id || 'org_demo',
-    role: joining ? 'employee_onboarding' : (data.role || meta.role || 'employee'),
-    tier: joining ? 'joining' : (data.tier || meta.tier || 'company'),
-    business_uid: meta.business_uid || profile?.id || user?.id,
+    orgId: appMeta.orgId || profile?.org_id || null,
+    role: joining ? 'employee_onboarding' : (appRole || data.role || 'employee'),
+    tier: joining ? 'joining' : (appMeta.tier || data.tier || 'company'),
+    business_uid: appMeta.business_uid || profile?.id || user?.id,
   }
 }
 

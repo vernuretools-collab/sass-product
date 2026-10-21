@@ -8,15 +8,19 @@ import {
   deleteDoc,
   setDoc,
   query,
+  where,
   orderBy,
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../../../shared/services/firebaseService'
+import { currentCircleId } from '../../../../../shared/supabase/currentCircle.js'
 
 // ─── Fetch all employees ──────────────────────────────────────────────────────
 export const getEmployees = async () => {
-  const snap = await getDocs(collection(db, 'employees'))
+  const orgId = await currentCircleId()
+  if (!orgId) return []
+  const snap = await getDocs(query(collection(db, 'employees'), where('orgId', '==', orgId)))
   return snap.docs.map((d) => ({ uid: d.id, employeeId: d.id, ...d.data() }))
 }
 
@@ -39,19 +43,16 @@ export const getLeaveRequests = async () => {
 
 // ─── Create employee ──────────────────────────────────────────────────────────
 export const createEmployee = async (employeeData) => {
-  try {
-    const uid = `emp_${Date.now()}`
-    await setDoc(doc(db, 'employees', uid), {
-      ...employeeData,
-      uid,
-      createdAt: serverTimestamp(),
-    })
-    return { uid, employeeId: uid, ...employeeData }
-  } catch (err) {
-    console.error('Error creating employee in Firestore:', err)
-    const uid = `emp_${Date.now()}`
-    return { uid, employeeId: uid, ...employeeData }
-  }
+  const orgId = await currentCircleId()
+  if (!orgId) throw new Error('Sign in to a company circle before adding employees.')
+  const uid = `emp_${Date.now()}`
+  await setDoc(doc(db, 'employees', uid), {
+    ...employeeData,
+    orgId,
+    uid,
+    createdAt: serverTimestamp(),
+  })
+  return { uid, employeeId: uid, orgId, ...employeeData }
 }
 
 // ─── Delete employee ──────────────────────────────────────────────────────────

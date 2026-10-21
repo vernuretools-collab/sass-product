@@ -95,7 +95,7 @@ export const Pipeline = () => {
     const fetchData = async () => {
       setLoadingDb(true)
       const [data, customStages] = await Promise.all([
-        getLeads('org_real'),
+        getLeads(null),
         getCrmStagesFromDb(),
       ])
       if (data && data.length > 0) {
@@ -146,7 +146,7 @@ export const Pipeline = () => {
     const targetStageObj = stages.find((s) => s.id === targetStageId)
     if (lead && lead.pipelineStageId !== targetStageId && targetStageObj) {
       updateLeadStage(leadId, targetStageId, targetStageObj.name)
-      await updateLeadStageInDb('org_real', leadId, targetStageId, targetStageObj.name)
+      await updateLeadStageInDb(null, leadId, targetStageId, targetStageObj.name)
     }
   }
 
@@ -213,7 +213,7 @@ export const Pipeline = () => {
     }
 
     // Write to Firestore database collection
-    const created = await createLead('org_real', leadPayload)
+    const created = await createLead(null, leadPayload)
 
     // Update Zustand local store with returned document ID
     addLead(created)
@@ -232,12 +232,12 @@ export const Pipeline = () => {
     if (!newStg) return
 
     updateLeadStage(leadId, newStg.id, newStg.name)
-    await updateLeadStageInDb('org_real', leadId, newStg.id, newStg.name)
+    await updateLeadStageInDb(null, leadId, newStg.id, newStg.name)
   }
 
   const handleDeleteLead = async (leadId) => {
     deleteLead(leadId)
-    await deleteLeadFromDb('org_real', leadId)
+    await deleteLeadFromDb(null, leadId)
   }
 
   return (
@@ -745,7 +745,7 @@ export const Pipeline = () => {
                 onClick={async () => {
                   const id = deleteConfirmLead.leadId || deleteConfirmLead.id
                   deleteLead(id)
-                  await deleteLeadFromDb('org_real', id)
+                  await deleteLeadFromDb(null, id)
                   setDeleteConfirmLead(null)
                 }}
               >
