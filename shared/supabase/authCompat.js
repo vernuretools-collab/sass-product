@@ -8,9 +8,12 @@ function claimsFromUser(user, profile) {
   const data = profile?.data || {}
   const appRole = String(appMeta.role || '').toLowerCase()
   const joining = appRole === 'employee_onboarding'
+  // Only server-set claims decide company and role; profile data never elevates (it is editable).
+  const profileRole = String(data.role || '').toLowerCase()
+  const fallbackRole = profileRole && !ADMIN_ROLES.has(profileRole) ? profileRole : 'employee'
   return {
-    orgId: appMeta.orgId || profile?.org_id || null,
-    role: joining ? 'employee_onboarding' : (appRole || data.role || 'employee'),
+    orgId: appMeta.orgId || null,
+    role: joining ? 'employee_onboarding' : (appRole || fallbackRole),
     tier: joining ? 'joining' : (appMeta.tier || data.tier || 'company'),
     business_uid: appMeta.business_uid || profile?.id || user?.id,
   }

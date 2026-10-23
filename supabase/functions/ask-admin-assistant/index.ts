@@ -35,9 +35,16 @@ Deno.serve(async (req) => {
     const { data: authData } = await userClient.auth.getUser()
     if (!authData.user) return json({ error: 'unauthenticated' }, 401)
 
-    const { data: profile } = await admin.from('profiles').select('data').eq('auth_id', authData.user.id).maybeSingle()
-    const role = String(profile?.data?.role || authData.user.app_metadata?.role || '').toLowerCase()
-    if (['employee', 'client'].includes(role)) return json({ error: 'permission-denied' }, 403)
+    // Only server-set claims count: profile rows are user-editable, and anything that is not an
+    // explicit admin role (onboarding logins, operators, unknown roles) is refused.
+    const role = String(authData.user.app_metadata?.role || '').toLowerCase()
+    const orgId = String(authData.user.app_metadata?.orgId || '')
+    if (!orgId || !['admin', 'owner', 'superadmin'].includes(role)) {
+      return json({ error: 'permission-denied' }, 403)
+    }
+    const { data: active, error: activeErr } = await admin.rpc('company_is_active', { row_org: orgId })
+    if (activeErr) throw activeErr
+    if (active !== true) return json({ error: 'This company is not active' }, 403)
 
     const apiKey = Deno.env.get('GEMINI_API_KEY') || ''
     if (!apiKey) {
@@ -81,7 +88,8 @@ Deno.serve(async (req) => {
       toolsUsed: ['supabase_crm_context'],
     })
   } catch (err) {
-    return json({ answer: err?.message || String(err), toolsUsed: [] }, 200)
+    console.error('[ask-admin-assistant]', err)
+    return json({ error: 'The assistant could not answer right now.' }, 500)
   }
 })
 

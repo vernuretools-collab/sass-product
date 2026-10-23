@@ -6,29 +6,18 @@ import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/ui/Card'
 import { useUserStore } from '../../stores/userStore'
 import haloLogo from '../../assets/halologo.png'
-import { doc, setDoc } from 'firebase/firestore'
-import { db } from '../../shared/services/firebaseService'
 import { loginWithEmail, fetchCustomClaims, getUserDoc, logoutUser } from '../../shared/services/authService'
 import { rejectSuspendedCompany } from '../../../../shared/supabase/companyStatus.js'
+import { supabase } from '../../../../shared/supabase/client.js'
 
 const ADMIN_ROLES = new Set(['admin', 'owner', 'superadmin'])
 
-function resolveAdminAccess(userDoc, claims, email) {
-  const role = String(userDoc?.role || claims?.role || '').toLowerCase()
-  const title = `${userDoc?.roleName || ''} ${userDoc?.departmentName || userDoc?.department || ''}`
-  const adminMailbox = /^admin@/i.test(String(email || '').trim())
-  const adminTitle = /(admin|owner|superadmin|executive|founder)/i.test(title)
-
-  if (ADMIN_ROLES.has(role) || adminTitle || adminMailbox) {
-    return {
-      allowed: true,
-      role: ADMIN_ROLES.has(role) ? role : 'admin',
-    }
-  }
-  if (role === 'employee' || role === 'client') {
-    return { allowed: false, role }
-  }
-  return { allowed: true, role: role || 'owner' }
+// Admin access comes only from the server-set JWT claim (app_metadata.role). Profile fields,
+// job titles and mailbox names are user-editable and must not grant the admin portal.
+async function resolveAdminAccess() {
+  const { data } = await supabase.auth.getUser()
+  const role = String(data?.user?.app_metadata?.role || '').toLowerCase()
+  return { allowed: ADMIN_ROLES.has(role), role }
 }
 
 export const AdminLoginPage = () => {
@@ -60,25 +49,17 @@ export const AdminLoginPage = () => {
       const firebaseUser = await loginWithEmail(email, password)
       const claims = await fetchCustomClaims(firebaseUser, true)
       const userDoc = await getUserDoc(firebaseUser.uid)
-      const access = resolveAdminAccess(userDoc, claims, email)
+      const access = await resolveAdminAccess()
 
       if (!access.allowed) {
         await logoutUser()
-        setError('Access Denied: This account is an Employee account. Please log in using the Employee Portal.')
+        setError('Access Denied: This is not a company admin account. Employees and clients use their own portals.')
         setLoading(false)
         return
       }
 
-      if (userDoc?.role !== access.role) {
-        try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), { role: access.role }, { merge: true })
-        } catch (err) {
-          console.warn('Could not persist admin role on profile:', err.message)
-        }
-      }
-
       const freshClaims = await fetchCustomClaims(firebaseUser, true)
-      const orgId = freshClaims?.orgId || claims?.orgId || userDoc?.orgId || null
+      const orgId = freshClaims?.orgId || claims?.orgId || null
       if (!orgId) {
         await logoutUser()
         setError('This account is not in a company circle. Ask the platform administrator to open your company.')
