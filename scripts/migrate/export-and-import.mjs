@@ -20,6 +20,10 @@ const require = createRequire(import.meta.url)
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 loadMigrateEnv(ROOT)
 
+// Public OAuth client of the Firebase CLI (firebase-tools ships these exact values in its source).
+// Google treats installed-app client secrets as non-confidential; they only identify the CLI so the
+// refresh token from `firebase login` (~/.config/configstore/firebase-tools.json) can be exchanged.
+// This is not a credential of this project. Do not put any project-specific secret here.
 const FIREBASE_CLI_OAUTH = {
   client_id: '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com',
   client_secret: 'j9iVZfS8kkCEFUPaAeJV0sAi',
@@ -159,7 +163,7 @@ function writeAdcFromFirebaseCli() {
   const refresh = loadFirebaseCliCredential()
   if (!refresh) return null
   const adcPath = path.join(os.tmpdir(), 'new-crm-firebase-adc.json')
-  fs.writeFileSync(adcPath, JSON.stringify(refresh, null, 2))
+  fs.writeFileSync(adcPath, JSON.stringify(refresh, null, 2), { mode: 0o600 })
   process.env.GOOGLE_APPLICATION_CREDENTIALS = adcPath
   return adcPath
 }

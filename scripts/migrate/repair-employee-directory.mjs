@@ -52,12 +52,14 @@ function initFirebaseAdmin() {
       const refresh = cfg.tokens?.refresh_token
       if (refresh) {
         const adcPath = join(tmpdir(), 'new-crm-firebase-adc.json')
+        // client_id/secret below are the public Firebase CLI OAuth client (shipped in firebase-tools),
+        // not a secret of this project. The file holds the user's refresh token, so keep it private.
         writeFileSync(adcPath, JSON.stringify({
           type: 'authorized_user',
           client_id: '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com',
           client_secret: 'j9iVZfS8kkCEFUPaAeJV0sAi',
           refresh_token: refresh,
-        }))
+        }), { mode: 0o600 })
         process.env.GOOGLE_APPLICATION_CREDENTIALS = adcPath
       }
     }

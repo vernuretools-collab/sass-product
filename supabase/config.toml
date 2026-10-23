@@ -24,9 +24,6 @@ verify_jwt = false
 [functions.ask-admin-assistant]
 verify_jwt = false
 
-[functions.send-workflow-email]
-verify_jwt = false
-
 # Public checkout. The function creates a pending purchase with the service role.
 # The Stripe webhook has no Supabase JWT; the signature check is the auth.
 [functions.create-checkout]

@@ -28,7 +28,7 @@ Set the billing secrets on the Supabase project (do not commit them):
 npx supabase secrets set STRIPE_SECRET_KEY=sk_... STRIPE_WEBHOOK_SECRET=whsec_... STRIPE_PRICE_ID=price_... WEBSITE_ORIGIN=http://localhost:3000
 ```
 
-`STRIPE_PRICE_ID` is a monthly Stripe price. Point the Stripe webhook at `/functions/v1/stripe-webhook` for `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, and `customer.subscription.deleted`.
+`STRIPE_PRICE_ID` is a monthly Stripe price. Point the Stripe webhook at `/functions/v1/stripe-webhook` for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated`, and `customer.subscription.deleted`. A company keeps access only while its subscription is active or trialing; a failed payment (past due), unpaid or canceled subscription closes the logins until it is paid again.
 
 4. Create your operator user in Supabase Auth, then set the platform claim once:
 
@@ -39,8 +39,8 @@ set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb)
 where email = 'you@yourcompany.com';
 ```
 
-5. `npm install` in `website`, `platform-portal`, and each portal.
-6. Deploy functions: `npx supabase functions deploy create-user ask-admin-assistant send-workflow-email create-checkout stripe-webhook`
+5. `npm install` in the repository root (the portals import shared code from `shared/`, which resolves its packages from the root `node_modules`), then `npm install` in `website`, `platform-portal`, and each portal.
+6. Deploy functions: `npx supabase functions deploy create-user ask-admin-assistant create-checkout stripe-webhook`
 
 ## Run
 
