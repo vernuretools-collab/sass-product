@@ -12,6 +12,23 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const body = await req.json().catch(() => ({}))
+
+  const supabaseUrlForStatus = Deno.env.get('SUPABASE_URL')
+  const serviceKeyForStatus = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (body.action === 'status') {
+    // Used by the success page: report only the purchase status for a Checkout session id.
+    const sessionId = text(body.sessionId)
+    if (!/^cs_[A-Za-z0-9_]{8,200}$/.test(sessionId)) return json({ status: 'unknown' })
+    if (!supabaseUrlForStatus || !serviceKeyForStatus) return json({ error: 'Checkout is not configured.' }, 503)
+    const statusClient = createClient(supabaseUrlForStatus, serviceKeyForStatus)
+    const { data, error } = await statusClient.rpc('purchase_status_for_session', { p_session_id: sessionId })
+    if (error) {
+      console.error('[create-checkout] status lookup failed:', error)
+      return json({ error: 'Could not check the purchase.' }, 500)
+    }
+    return json({ status: String(data?.status || 'unknown') })
+  }
+
   const companyName = text(body.companyName)
   const adminName = text(body.adminName)
   const email = text(body.email)
@@ -33,7 +50,7 @@ Deno.serve(async (req) => {
     p_password: password,
   })
   if (prepareError || !purchaseId) {
-    return json({ error: prepareError?.message || 'Could not start checkout.' }, 400)
+    return json({ error: friendlyPrepareError(prepareError?.message) }, 400)
   }
 
   const origin = (Deno.env.get('WEBSITE_ORIGIN') || 'http://localhost:3000').replace(/\/$/, '')
@@ -45,7 +62,9 @@ Deno.serve(async (req) => {
     session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price, quantity: 1 }],
-      success_url: `${origin}/buy/success`,
+      success_url: `${origin}/buy/success?session_id={CHECKOUT_SESSION_ID}`,
+      // Stripe's minimum lifetime; the matching pending purchase expires after 35 minutes.
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       cancel_url: `${origin}/buy?canceled=1`,
       client_reference_id: purchase,
       customer_email: email,
@@ -53,8 +72,9 @@ Deno.serve(async (req) => {
       subscription_data: { metadata: { purchase_id: purchase } },
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not start checkout.'
-    return json({ error: message }, 502)
+    console.error('[create-checkout] Stripe session failed:', err)
+    await admin.rpc('expire_company_purchase', { p_purchase_id: purchase, p_reason: 'stripe-session-failed' })
+    return json({ error: 'Could not start checkout.' }, 502)
   }
 
   if (!session.id || !session.url) {
@@ -66,11 +86,35 @@ Deno.serve(async (req) => {
     p_session_id: session.id,
   })
   if (attachError) {
-    return json({ error: attachError.message }, 500)
+    console.error('[create-checkout] attach failed:', attachError)
+    return json({ error: 'Could not start checkout.' }, 500)
   }
 
   return json({ url: session.url })
 })
+
+// Validation messages raised by private.prepare_company_purchase are safe to show; anything else
+// (constraint names, SQL errors) is replaced by a generic message.
+const SAFE_PREPARE_ERRORS = [
+  'Company name is required',
+  'Admin name is required',
+  'A valid email is required',
+  'Password must be at least 10 characters',
+]
+
+function friendlyPrepareError(message?: string) {
+  const raw = String(message || '')
+  if (raw.includes('checkout-in-progress')) {
+    return 'A checkout for this email is already in progress. Finish it, or try again in about 30 minutes.'
+  }
+  if (raw.includes('checkout-unavailable')) {
+    return 'We could not start a purchase for this email. If you already have an account, sign in instead or contact support.'
+  }
+  const safe = SAFE_PREPARE_ERRORS.find((item) => raw.includes(item))
+  if (safe) return safe
+  if (raw) console.error('[create-checkout] prepare failed:', raw)
+  return 'Could not start checkout.'
+}
 
 function text(value: unknown) {
   return String(value || '').trim()

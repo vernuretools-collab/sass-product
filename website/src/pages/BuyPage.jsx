@@ -87,9 +87,9 @@ export function BuyPage() {
         </label>
         <label className="text-sm font-medium">
           Password
-          <input required type="password" minLength={6} value={form.password} onChange={setField('password')} className="mt-1 w-full rounded-xl border border-line px-3 py-2" />
+          <input required type="password" minLength={10} value={form.password} onChange={setField('password')} className="mt-1 w-full rounded-xl border border-line px-3 py-2" />
         </label>
-        <p className="text-sm text-muted">This is the login for the admin portal. Employees and clients are added after you sign in.</p>
+        <p className="text-sm text-muted">At least 10 characters. This is the login for the admin portal. Employees and clients are added after you sign in.</p>
         {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">{error}</p>}
         <div className="flex items-center gap-4">
           <button type="submit" disabled={saving} className="rounded-xl bg-accent text-white px-4 py-2.5 font-medium disabled:opacity-60">

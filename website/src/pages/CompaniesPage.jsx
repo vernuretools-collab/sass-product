@@ -2,7 +2,7 @@ const steps = [
   'You pay for a monthly workspace from this website.',
   'After payment, your company circle opens and you are its admin.',
   'Sign in to the admin portal and add your own employees and clients.',
-  'If the subscription ends, those logins stop until it is paid again.',
+  'If a payment fails or the subscription ends, those logins stop until it is paid again.',
 ]
 
 export function CompaniesPage() {

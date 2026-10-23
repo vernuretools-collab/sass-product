@@ -25,7 +25,7 @@ export function useLiveAuthSession({ auth, useUserStore, fetchCustomClaims }) {
         try {
           await rejectSuspendedCompany(() => supabase.auth.signOut())
         } catch (err) {
-          if (err?.code === 'company-suspended') {
+          if (err?.code === 'company-suspended' || err?.code === 'company-inactive') {
             clearUser()
             return
           }
