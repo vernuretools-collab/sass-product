@@ -340,8 +340,8 @@ export const ClientProfileView = () => {
   }
 
   const handleSetPassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      setError('Password must be at least 6 characters.')
+    if (!newPassword || newPassword.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
     setSaving(true)
@@ -846,7 +846,7 @@ export const ClientProfileView = () => {
                   <Input
                     label="New Password"
                     type="password"
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 8 characters"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                   />

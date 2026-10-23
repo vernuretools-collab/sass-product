@@ -270,7 +270,7 @@ export const createClientAccount = async (payload = {}) => {
 /** Set a client portal password without sending email. Admin only. */
 export const setClientPassword = async (uid, password) => {
   if (!uid) throw new Error('Client account is missing.')
-  if (!password || password.length < 6) throw new Error('Password must be at least 6 characters.')
+  if (!password || password.length < 8) throw new Error('Password must be at least 8 characters.')
   return invokeCreateUser({
     action: 'set-password',
     type: 'client',

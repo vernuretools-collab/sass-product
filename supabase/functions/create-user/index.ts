@@ -118,18 +118,30 @@ function isJoiningLoginEmail(email: string) {
   return value.endsWith('@join.halo.local') || value.endsWith('@joining.halo.local')
 }
 
-async function rememberJoiningPassword(admin, uid: string, password: string) {
-  if (!uid || password.length < 6) return
-  await admin.from('employee_onboarding').update({ login_password: password }).eq('auth_id', uid)
-  const { data: profile } = await admin.from('profiles').select('id, data').eq('id', uid).maybeSingle()
-  if (!profile) return
-  const role = String(profile.data?.role || '').toLowerCase()
-  const email = String(profile.data?.email || '')
-  if (role !== 'employee_onboarding' && !isJoiningLoginEmail(email)) return
-  await admin.from('profiles').update({
-    data: { ...(profile.data || {}), loginPassword: password },
-    updated_at: new Date().toISOString(),
-  }).eq('id', profile.id)
+const MIN_PASSWORD_LENGTH = 8
+
+// Log the real error server-side and give the browser a generic message, so database and auth
+// internals (constraint names, SQL, user existence) are not leaked.
+function failure(context: string, err: unknown, status = 400, message = 'The request could not be completed') {
+  console.error(`[create-user] ${context}:`, err)
+  return json({ error: message }, status)
+}
+
+function createUserFailure(err: { message?: string } | null) {
+  if (/already|exists|registered/i.test(String(err?.message || ''))) {
+    return failure('createUser', err, 409, 'A user with that login already exists')
+  }
+  return failure('createUser', err, 400, 'Could not create the user')
+}
+
+// The auth user must belong to the caller's company (app_metadata.orgId is server-set).
+async function authUserInOrg(admin, uid: string, orgId: string) {
+  if (!uid || uid.length > 80) return null
+  const { data, error } = await admin.auth.admin.getUserById(uid)
+  if (error || !data?.user) return null
+  if (String(data.user.app_metadata?.orgId || '') !== orgId) return null
+  if (String(data.user.app_metadata?.platform_role || '') === 'operator') return null
+  return data.user
 }
 
 Deno.serve(async (req) => {
@@ -158,18 +170,31 @@ Deno.serve(async (req) => {
     return json({ error: 'This account is not in a company circle' }, 403)
   }
 
-  const body = await req.json()
+  const { data: active, error: activeErr } = await admin.rpc('company_is_active', { row_org: orgId })
+  if (activeErr) return failure('company_is_active', activeErr, 500)
+  if (active !== true) {
+    return json({ error: 'This company is not active' }, 403)
+  }
+
+  let body
+  try {
+    body = await req.json()
+  } catch {
+    return json({ error: 'Invalid request body' }, 400)
+  }
   const password = String(body.password || '')
   const kind = body.type || 'employee'
 
   if (body.action === 'set-password') {
     const uid = String(body.uid || '').trim()
-    if (!uid || password.length < 6) {
-      return json({ error: 'uid and a password of at least 6 characters are required' }, 400)
+    if (!uid || password.length < MIN_PASSWORD_LENGTH) {
+      return json({ error: `uid and a password of at least ${MIN_PASSWORD_LENGTH} characters are required` }, 400)
     }
-    const { error: updateErr } = await admin.auth.admin.updateUserById(uid, { password })
-    if (updateErr) return json({ error: updateErr.message }, 400)
-    await rememberJoiningPassword(admin, uid, password)
+    // Only users of the caller's own company can have their password changed.
+    const target = await authUserInOrg(admin, uid, orgId)
+    if (!target) return json({ error: 'User not found' }, 404)
+    const { error: updateErr } = await admin.auth.admin.updateUserById(target.id, { password })
+    if (updateErr) return failure('set-password', updateErr)
     return json({ ok: true })
   }
 
@@ -178,12 +203,12 @@ Deno.serve(async (req) => {
     if (!uid || uid.length > 80) return json({ error: 'A valid user id is required' }, 400)
     if (uid === authData.user.id) return json({ error: 'You cannot delete your own account' }, 400)
 
-    const { data: byId, error: byIdErr } = await admin.from('profiles').select('id,auth_id,org_id,data').eq('id', uid).maybeSingle()
-    if (byIdErr) return json({ error: byIdErr.message }, 400)
+    const { data: byId, error: byIdErr } = await admin.from('profiles').select('id,auth_id,org_id,data').eq('id', uid).eq('org_id', orgId).maybeSingle()
+    if (byIdErr) return failure('delete-user lookup', byIdErr)
     let target = byId
     if (!target) {
-      const { data: byAuth, error: byAuthErr } = await admin.from('profiles').select('id,auth_id,org_id,data').eq('auth_id', uid).maybeSingle()
-      if (byAuthErr) return json({ error: byAuthErr.message }, 400)
+      const { data: byAuth, error: byAuthErr } = await admin.from('profiles').select('id,auth_id,org_id,data').eq('auth_id', uid).eq('org_id', orgId).maybeSingle()
+      if (byAuthErr) return failure('delete-user lookup', byAuthErr)
       target = byAuth
     }
     const targetRole = String(target?.data?.role || '').toLowerCase()
@@ -197,9 +222,17 @@ Deno.serve(async (req) => {
 
     const authId = String(target?.auth_id || uid)
     const profileId = String(target?.id || uid)
-    const { error: authDeleteErr } = await admin.auth.admin.deleteUser(authId)
-    if (authDeleteErr && !/not found/i.test(authDeleteErr.message || '')) {
-      return json({ error: authDeleteErr.message }, 400)
+    // The auth account itself must also be a client of this company.
+    const authUser = await authUserInOrg(admin, authId, orgId)
+    if (!target && !authUser) return json({ error: 'User not found' }, 404)
+    if (authUser && String(authUser.app_metadata?.role || '').toLowerCase() !== 'client') {
+      return json({ error: 'Only client portal users can be deleted here' }, 400)
+    }
+    if (authUser) {
+      const { error: authDeleteErr } = await admin.auth.admin.deleteUser(authUser.id)
+      if (authDeleteErr && !/not found/i.test(authDeleteErr.message || '')) {
+        return failure('delete-user auth', authDeleteErr)
+      }
     }
 
     const [onboardById, onboardByUser, profileDelete] = await Promise.all([
@@ -208,7 +241,7 @@ Deno.serve(async (req) => {
       admin.from('profiles').delete().eq('id', profileId).eq('org_id', orgId),
     ])
     const cleanupErr = onboardById.error || onboardByUser.error || profileDelete.error
-    if (cleanupErr) return json({ error: cleanupErr.message }, 400)
+    if (cleanupErr) return failure('delete-user cleanup', cleanupErr)
     return json({ ok: true })
   }
 
@@ -220,13 +253,13 @@ Deno.serve(async (req) => {
 
     let row = null
     if (id) {
-      const byId = await admin.from('employee_onboarding').select('id, auth_id, org_id, username').eq('id', id).maybeSingle()
-      if (byId.error) return json({ error: byId.error.message }, 400)
+      const byId = await admin.from('employee_onboarding').select('id, auth_id, org_id, username').eq('id', id).eq('org_id', orgId).maybeSingle()
+      if (byId.error) return failure('delete-onboarding lookup', byId.error)
       row = byId.data
     }
     if (!row && username) {
-      const byName = await admin.from('employee_onboarding').select('id, auth_id, org_id, username').eq('username', username).maybeSingle()
-      if (byName.error) return json({ error: byName.error.message }, 400)
+      const byName = await admin.from('employee_onboarding').select('id, auth_id, org_id, username').eq('username', username).eq('org_id', orgId).maybeSingle()
+      if (byName.error) return failure('delete-onboarding lookup', byName.error)
       row = byName.data
     }
     if (row && String(row.org_id || '') !== orgId) return json({ error: 'permission-denied' }, 403)
@@ -235,10 +268,14 @@ Deno.serve(async (req) => {
     const authIds = new Set<string>()
     const profileIds = new Set<string>()
     if (row?.auth_id) authIds.add(String(row.auth_id))
-    if (authIdHint && authIdHint !== authData.user.id) authIds.add(authIdHint)
+    // A browser-supplied auth id is only trusted if that account belongs to this company.
+    if (authIdHint && authIdHint !== authData.user.id && (await authUserInOrg(admin, authIdHint, orgId))) {
+      authIds.add(authIdHint)
+    }
 
     const considerProfile = (profile) => {
       if (!profile?.id) return
+      if (String(profile.org_id || '') !== orgId) return
       const targetRole = String(profile.data?.role || '').toLowerCase()
       const email = String(profile.data?.email || '')
       const joining = targetRole === 'employee_onboarding' || isJoiningLoginEmail(email) || (!targetRole && authIds.has(String(profile.id)))
@@ -248,42 +285,48 @@ Deno.serve(async (req) => {
     }
 
     if (login) {
-      const named = await admin.from('profiles').select('id, auth_id, data').eq('data->>username', login)
-      if (named.error) return json({ error: named.error.message }, 400)
+      const named = await admin.from('profiles').select('id, auth_id, org_id, data').eq('data->>username', login)
+      if (named.error) return failure('delete-onboarding lookup', named.error)
       for (const profile of named.data || []) considerProfile(profile)
     }
     if (id) {
-      const byProfileId = await admin.from('profiles').select('id, auth_id, data').eq('id', id).maybeSingle()
-      if (byProfileId.error) return json({ error: byProfileId.error.message }, 400)
+      const byProfileId = await admin.from('profiles').select('id, auth_id, org_id, data').eq('id', id).maybeSingle()
+      if (byProfileId.error) return failure('delete-onboarding lookup', byProfileId.error)
       considerProfile(byProfileId.data)
     }
     for (const authId of [...authIds]) {
-      const byAuth = await admin.from('profiles').select('id, auth_id, data').eq('id', authId).maybeSingle()
-      if (byAuth.error) return json({ error: byAuth.error.message }, 400)
+      const byAuth = await admin.from('profiles').select('id, auth_id, org_id, data').eq('id', authId).maybeSingle()
+      if (byAuth.error) return failure('delete-onboarding lookup', byAuth.error)
       considerProfile(byAuth.data)
     }
 
     if (!row && profileIds.size === 0) return json({ error: 'Onboarding record not found' }, 404)
 
     for (const profileId of profileIds) {
-      const employee = await admin.from('employees').select('id, data').eq('id', profileId).maybeSingle()
+      const employee = await admin.from('employees').select('id, data').eq('id', profileId).eq('org_id', orgId).maybeSingle()
       const employeeEmail = String(employee.data?.data?.email || '').toLowerCase()
       if (isJoiningLoginEmail(employeeEmail)) {
-        const { error: employeeErr } = await admin.from('employees').delete().eq('id', profileId)
-        if (employeeErr) return json({ error: employeeErr.message }, 400)
+        const { error: employeeErr } = await admin.from('employees').delete().eq('id', profileId).eq('org_id', orgId)
+        if (employeeErr) return failure('delete-onboarding employee', employeeErr)
       }
-      const { error: profileErr } = await admin.from('profiles').delete().eq('id', profileId)
-      if (profileErr) return json({ error: profileErr.message }, 400)
+      const { error: profileErr } = await admin.from('profiles').delete().eq('id', profileId).eq('org_id', orgId)
+      if (profileErr) return failure('delete-onboarding profile', profileErr)
     }
     if (row) {
-      const { error: deleteErr } = await admin.from('employee_onboarding').delete().eq('id', row.id)
-      if (deleteErr) return json({ error: deleteErr.message }, 400)
+      const { error: deleteErr } = await admin.from('employee_onboarding').delete().eq('id', row.id).eq('org_id', orgId)
+      if (deleteErr) return failure('delete-onboarding row', deleteErr)
     }
     for (const authId of authIds) {
       if (!authId || authId === authData.user.id) continue
+      // Re-check: only joining accounts of this company are removed.
+      const authUser = await authUserInOrg(admin, authId, orgId)
+      if (!authUser) continue
+      const authRole = String(authUser.app_metadata?.role || '').toLowerCase()
+      if (authRole !== 'employee_onboarding' && !isJoiningLoginEmail(String(authUser.email || ''))) continue
       const { error: authDeleteErr } = await admin.auth.admin.deleteUser(authId)
       if (authDeleteErr && !/not found/i.test(authDeleteErr.message || '')) {
-        return json({ ok: true, authWarning: authDeleteErr.message })
+        console.error('[create-user] delete-onboarding auth:', authDeleteErr)
+        return json({ ok: true, authWarning: 'The login could not be removed; try again later' })
       }
     }
     return json({ ok: true })
@@ -294,8 +337,8 @@ Deno.serve(async (req) => {
     if (!isValidUsername(username)) {
       return json({ error: 'username must be 3–32 characters: letters, numbers, dots, underscores, or hyphens' }, 400)
     }
-    if (password.length < 6) {
-      return json({ error: 'password must be at least 6 characters' }, 400)
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return json({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400)
     }
     const employment = sanitizeEmployment(body.employment)
     const employmentError = requiredEmploymentError(employment)
@@ -315,7 +358,7 @@ Deno.serve(async (req) => {
       app_metadata: { role: 'employee_onboarding', orgId, tier: 'joining' },
       user_metadata: { displayName, username },
     })
-    if (createErr) return json({ error: createErr.message }, 400)
+    if (createErr) return createUserFailure(createErr)
 
     const uid = created.user.id
     const now = new Date().toISOString()
@@ -324,7 +367,6 @@ Deno.serve(async (req) => {
       auth_id: uid,
       username,
       status: 'awaiting_answers',
-      login_password: password,
       employment,
       kras: {
         custom: customKras.map((row) => ({
@@ -343,7 +385,7 @@ Deno.serve(async (req) => {
 
     if (insertErr) {
       await admin.auth.admin.deleteUser(uid)
-      return json({ error: insertErr.message }, 400)
+      return failure('employee_onboarding insert', insertErr)
     }
     return json({ id: row.id, username: row.username, status: row.status, joiningPath: '/joining' })
   }
@@ -362,6 +404,9 @@ Deno.serve(async (req) => {
   if (!email || !password) {
     return json({ error: kind === 'client' ? 'username and password required' : 'email and password required' }, 400)
   }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return json({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400)
+  }
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
@@ -374,7 +419,7 @@ Deno.serve(async (req) => {
     },
     user_metadata: { displayName: body.displayName || username || email.split('@')[0], username: username || null },
   })
-  if (createErr) return json({ error: createErr.message }, 400)
+  if (createErr) return createUserFailure(createErr)
 
   const uid = created.user.id
   const now = new Date().toISOString()

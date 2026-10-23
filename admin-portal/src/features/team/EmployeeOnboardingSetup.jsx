@@ -81,8 +81,8 @@ export const EmployeeOnboardingSetup = ({ embedded = false, onClose, onCreated }
       setError('Username must be 3–32 characters: letters, numbers, dots, underscores, or hyphens.')
       return
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.')
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
     const handbookError = handbookValidationError({ kras, learningPlan, reviews })
@@ -115,7 +115,7 @@ export const EmployeeOnboardingSetup = ({ embedded = false, onClose, onCreated }
           <p className="text-sm text-fg"><span className="text-muted">Joining page</span><br />{created.url}</p>
           <p className="text-sm text-fg"><span className="text-muted">Username</span><br />{created.username}</p>
           <p className="text-sm text-fg"><span className="text-muted">Password</span><br />{created.password}</p>
-          <p className="text-xs text-muted">This password stays on the onboarding list so you can share the joining login.</p>
+          <p className="text-xs text-muted">Copy this login now. The password is not stored and will not be shown again; reset it from the onboarding record if it is lost.</p>
           <div className="flex gap-3 pt-2">
             <Button
               type="button"

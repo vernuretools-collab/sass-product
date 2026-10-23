@@ -215,7 +215,6 @@ export function onboardingFromProfile(profile) {
     documents: Array.isArray(data.documents) ? data.documents : [],
     created_at: profile.created_at || data.createdAt || data.updatedAt,
     submitted_at: data.submittedAt || null,
-    login_password: data.loginPassword || '',
     source: 'profile',
   }
 }

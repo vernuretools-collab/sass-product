@@ -134,19 +134,18 @@ export const EmployeeOnboardingList = () => {
               <th className="px-4 py-3 font-semibold">Department</th>
               <th className="px-4 py-3 font-semibold">Joining username</th>
               <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Password</th>
               <th className="px-4 py-3 font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-muted">Loading onboarding records…</td>
+                <td colSpan={5} className="px-4 py-8 text-muted">Loading onboarding records…</td>
               </tr>
             )}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10">
+                <td colSpan={5} className="px-4 py-10">
                   <div className="flex flex-col items-center gap-3 text-center">
                     <p className="text-sm text-muted">No onboarding records yet.</p>
                     <Button icon={UserPlus} onClick={openSetup}>Setup new employee</Button>
@@ -157,7 +156,6 @@ export const EmployeeOnboardingList = () => {
             {rows.map((row) => {
               const employment = row.employment || {}
               const submitted = row.status === ONBOARDING_STATUS.SUBMITTED
-              const password = row.login_password || ''
               return (
                 <tr key={row.id} className="border-t border-border">
                   <td className="px-4 py-3">
@@ -176,7 +174,6 @@ export const EmployeeOnboardingList = () => {
                       <p className="text-[11px] text-muted mt-1">Click the name to open answers and PDFs</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm text-fg break-all">{password || 'Not saved'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <Link to={`/team/onboarding/${row.id}`}>

@@ -81,17 +81,6 @@ async function findJoiningAuthId(email) {
   return employee?.auth_id || employee?.user_id || employee?.id || ''
 }
 
-async function rememberJoiningPassword({ id, authId, password }) {
-  const value = String(password || '')
-  if (value.length < 6) return
-  const patch = { login_password: value }
-  if (id) {
-    const { data, error } = await supabase.from('employee_onboarding').update(patch).eq('id', id).select('id')
-    if (!error && data?.length) return
-  }
-  if (authId) await supabase.from('employee_onboarding').update(patch).eq('auth_id', authId)
-}
-
 async function linkJoiningAuth(onboardingId, authId) {
   if (!onboardingId || !authId) return
   const { error } = await supabase.from('employee_onboarding').update({ auth_id: authId }).eq('id', onboardingId)
@@ -153,7 +142,6 @@ async function markJoiningProfile(authId, { username, email, displayName, employ
       displayName: displayName || current.displayName || username,
       role: JOINING_ROLE,
       status: 'active',
-      loginPassword: password || current.loginPassword || '',
       joiningStatus: current.joiningStatus === 'submitted' ? 'submitted' : 'draft',
       employment: employment || current.employment || {},
       kras: kras?.learningPlan || kras?.reviews
@@ -221,7 +209,6 @@ export async function resetJoiningLogin({ id, username, password, displayName, e
   })
   const authId = created.uid || await findJoiningAuthId(email)
   await ensureJoiningPassword(email, password, authId)
-  await rememberJoiningPassword({ id, authId, password })
   await markJoiningProfile(authId, {
     username: login,
     email,
@@ -280,7 +267,6 @@ export async function createEmployeeOnboarding({ username, password, employment,
     onboardingId: authId,
   })
   const recordId = viaFunction?.id || authId
-  await rememberJoiningPassword({ id: recordId, authId, password })
   await saveHandbookKras({ id: recordId, authId, kras: handbook })
   return { ...created, ...viaFunction, id: recordId, uid: authId, username, email, kras: handbook }
 }
@@ -356,14 +342,13 @@ function mergeOnboarding(tableRow, profileRow) {
     kras: mergeKras(tableRow.kras, fromProfile.kras),
     submitted_at: fromProfile.submitted_at || tableRow.submitted_at,
     auth_id: tableRow.auth_id || fromProfile.auth_id,
-    login_password: tableRow.login_password || fromProfile.login_password || '',
   }
 }
 
 export async function listEmployeeOnboarding() {
   const { data, error } = await supabase
     .from('employee_onboarding')
-    .select('id, username, status, employment, created_at, submitted_at, auth_id, login_password')
+    .select('id, username, status, employment, created_at, submitted_at, auth_id')
     .order('created_at', { ascending: false })
   const tableRows = error ? [] : data || []
   const { data: profiles } = await supabase.from('profiles').select('id, auth_id, data, created_at').eq('data->>role', JOINING_ROLE)

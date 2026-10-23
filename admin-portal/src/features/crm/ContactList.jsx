@@ -105,8 +105,8 @@ export const ContactList = () => {
       return
     }
 
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters.')
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
 
@@ -489,7 +489,7 @@ export const ContactList = () => {
                 <Input
                     label="Set Account Password *"
                     type="password"
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 8 characters"
                     value={form.password}
                     onChange={setField('password')}
                     required
