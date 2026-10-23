@@ -9,17 +9,6 @@ export function profilePhotoStoragePath(uid) {
   return `avatars/${uid}/avatar`
 }
 
-function fallbackPhotoStoragePath(uid) {
-  // Public `deliverables` already allows authenticated writes. Used when the
-  // `avatars` bucket exists but object RLS from 00009 has not been applied.
-  return `deliverables/profile-photos/${uid}/avatar`
-}
-
-function isMissingBucketOrRls(err) {
-  const msg = String(err?.message || err || '')
-  return /bucket not found|row-level security|not allowed|unauthorized|403|42501/i.test(msg)
-}
-
 async function uploadToPath(storagePath, file) {
   const storageRef = ref(storage, storagePath)
   await new Promise((resolve, reject) => {
@@ -59,12 +48,7 @@ export async function uploadProfilePhoto(uid, file) {
     throw new Error('Photo must be 2 MB or smaller.')
   }
 
-  try {
-    return await uploadToPath(profilePhotoStoragePath(uid), file)
-  } catch (err) {
-    if (!isMissingBucketOrRls(err)) throw err
-    return await uploadToPath(fallbackPhotoStoragePath(uid), file)
-  }
+  return await uploadToPath(profilePhotoStoragePath(uid), file)
 }
 
 async function deleteAtPath(storagePath) {
@@ -78,9 +62,4 @@ async function deleteAtPath(storagePath) {
 
 export async function deleteProfilePhoto(uid) {
   await deleteAtPath(profilePhotoStoragePath(uid))
-  try {
-    await deleteAtPath(fallbackPhotoStoragePath(uid))
-  } catch {
-    // Fallback object may not exist.
-  }
 }

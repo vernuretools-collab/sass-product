@@ -19,7 +19,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore'
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject, resolveFileUrl } from 'firebase/storage'
 import {
   Send,
   Upload,
@@ -37,6 +37,21 @@ import {
   Loader2,
   Filter,
 } from 'lucide-react'
+
+// Deliverables are private: sign the stored path at the moment of use instead of trusting the
+// persisted downloadURL (it expires, and older rows carry a public URL that no longer works).
+async function openableUrl(docItem) {
+  if (docItem.storagePath) {
+    try {
+      const signed = await resolveFileUrl(docItem.storagePath)
+      if (signed) return signed
+    } catch (err) {
+      console.warn('Could not open deliverable:', err?.message || err)
+      return null
+    }
+  }
+  return docItem.fileUrl || docItem.url || docItem.downloadURL || null
+}
 
 export const ClientDocumentsPage = ({ embedded = false, lockedProjectId = null }) => {
   const { user } = useUserStore()
@@ -537,7 +552,10 @@ export const ClientDocumentsPage = ({ embedded = false, lockedProjectId = null }
                     <div className="flex items-center gap-2">
                       {fileUrl && (
                         <button
-                          onClick={() => window.open(fileUrl, '_blank', 'noopener,noreferrer')}
+                          onClick={async () => {
+                            const url = await openableUrl(docItem)
+                            if (url) window.open(url, '_blank', 'noopener,noreferrer')
+                          }}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-chrome hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold cursor-pointer border border-border"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -549,9 +567,11 @@ export const ClientDocumentsPage = ({ embedded = false, lockedProjectId = null }
                           size="sm"
                           variant="secondary"
                           icon={Download}
-                          onClick={() => {
+                          onClick={async () => {
+                            const url = await openableUrl(docItem)
+                            if (!url) return
                             const link = document.createElement('a')
-                            link.href = fileUrl
+                            link.href = url
                             link.download = fileName
                             link.target = '_blank'
                             document.body.appendChild(link)

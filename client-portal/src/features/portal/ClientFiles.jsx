@@ -6,6 +6,7 @@ import { useUserStore } from '../../stores/userStore'
 import { getClientDeliverables } from './services/portalService'
 import { db } from '../../shared/services/firebaseService'
 import { collection, query, where, onSnapshot } from 'firebase/firestore'
+import { resolveFileUrl } from 'firebase/storage'
 import { getClientOnboardingDoc, resolveAgreements } from '../../shared/services/onboardingService'
 import { downloadAgreementRecordAsPDF } from '../../shared/utils/agreementPdf'
 import {
@@ -126,8 +127,23 @@ export const ClientFiles = () => {
   }
 
   // Handle file view / preview
-  const handleView = (f) => {
-    const url = f.downloadURL || f.fileUrl || f.url
+  // Files in storage are private: get a short-lived signed URL from the stored path at the moment
+  // of use. The persisted downloadURL may be an expired signed URL or an old public URL.
+  const fileUrl = async (f) => {
+    if (f.storagePath) {
+      try {
+        const signed = await resolveFileUrl(f.storagePath)
+        if (signed) return signed
+      } catch (err) {
+        console.warn('Could not open file:', err?.message || err)
+        return null
+      }
+    }
+    return f.fileUrl || f.url || f.downloadURL || null
+  }
+
+  const handleView = async (f) => {
+    const url = await fileUrl(f)
     if (url) {
       // If it's an external link or image/pdf, we can preview or open in new tab
       window.open(url, '_blank', 'noopener,noreferrer')
@@ -138,7 +154,7 @@ export const ClientFiles = () => {
 
   // Handle file download
   const handleDownload = async (f) => {
-    const url = f.downloadURL || f.fileUrl || f.url
+    const url = await fileUrl(f)
     const name = f.filename || f.fileName || f.name || 'document'
     if (url) {
       try {

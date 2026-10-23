@@ -1,11 +1,12 @@
 import { supabase } from './client.js'
+import { currentCircleId } from './currentCircle.js'
 
 const BUCKETS = ['employees', 'deliverables', 'payslips', 'avatars']
 
-// `employees` and `payslips` hold personal data and are private, so their
-// objects can only be reached through a short-lived signed URL.
+// `employees`, `payslips` and `deliverables` hold company and personal data and are private, so
+// their objects can only be reached through a short-lived signed URL.
 // `avatars` is public so directory cards can load a stable photo URL.
-const PRIVATE_BUCKETS = new Set(['employees', 'payslips'])
+const PRIVATE_BUCKETS = new Set(['employees', 'payslips', 'deliverables'])
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60
 
@@ -16,6 +17,17 @@ function bucketAndPath(fullPath) {
     return { bucket, path: rest.join('/') }
   }
   return { bucket: 'employees', path: clean }
+}
+
+// Every object lives under its company folder: "<bucket>/<orgId>/<rest>". Callers keep storing the
+// short path ("employees/<uid>/..."); the company folder is added here from the signed-in session
+// so the database policies (which require folder 1 to be the caller's company) can match.
+async function objectPath(storageRef) {
+  const orgId = await currentCircleId()
+  if (!orgId) throw new Error('You are not signed in to a company.')
+  const path = String(storageRef.path || '').replace(/^\/+/, '')
+  if (path.startsWith(`${orgId}/`)) return path
+  return `${orgId}/${path}`
 }
 
 export function ref(_storage, fullPath) {
@@ -38,7 +50,8 @@ export function uploadBytesResumable(storageRef, file) {
     try {
       if (!supabase) throw new Error('Supabase is not configured')
       listeners.progress?.({ bytesTransferred: 0, totalBytes: file.size || 1 })
-      const { error } = await supabase.storage.from(storageRef.bucket).upload(storageRef.path, file, {
+      const path = await objectPath(storageRef)
+      const { error } = await supabase.storage.from(storageRef.bucket).upload(path, file, {
         upsert: true,
         contentType: file.type || undefined,
       })
@@ -55,14 +68,15 @@ export function uploadBytesResumable(storageRef, file) {
 }
 
 export async function getDownloadURL(storageRef) {
+  const path = await objectPath(storageRef)
   if (PRIVATE_BUCKETS.has(storageRef.bucket)) {
     const { data, error } = await supabase.storage
       .from(storageRef.bucket)
-      .createSignedUrl(storageRef.path, SIGNED_URL_TTL_SECONDS)
+      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS)
     if (error) throw error
     return data.signedUrl
   }
-  const { data } = supabase.storage.from(storageRef.bucket).getPublicUrl(storageRef.path)
+  const { data } = supabase.storage.from(storageRef.bucket).getPublicUrl(path)
   return data.publicUrl
 }
 
@@ -78,6 +92,7 @@ export async function resolveFileUrl(fullPath) {
 }
 
 export async function deleteObject(storageRef) {
-  const { error } = await supabase.storage.from(storageRef.bucket).remove([storageRef.path])
+  const path = await objectPath(storageRef)
+  const { error } = await supabase.storage.from(storageRef.bucket).remove([path])
   if (error) throw error
 }
