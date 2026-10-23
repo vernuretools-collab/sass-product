@@ -17,11 +17,20 @@ import { db } from '../../../shared/services/firebaseService'
 import { currentCircleId } from '../../../../../shared/supabase/currentCircle.js'
 
 // ─── Fetch all employees ──────────────────────────────────────────────────────
+function isDirectoryStaff(data = {}) {
+  const role = String(data.role || '').toLowerCase()
+  return role !== 'owner' && role !== 'admin' && role !== 'superadmin'
+}
+
 export const getEmployees = async () => {
   const orgId = await currentCircleId()
   if (!orgId) return []
   const snap = await getDocs(query(collection(db, 'employees'), where('orgId', '==', orgId)))
-  return snap.docs.map((d) => ({ uid: d.id, employeeId: d.id, ...d.data() }))
+  return snap.docs.flatMap((d) => {
+    const data = d.data() || {}
+    if (!isDirectoryStaff(data)) return []
+    return [{ uid: d.id, employeeId: d.id, ...data }]
+  })
 }
 
 // ─── Fetch all departments ────────────────────────────────────────────────────

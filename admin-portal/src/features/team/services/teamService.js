@@ -60,19 +60,25 @@ function collectEmployeeIdentityIds(rowId, data = {}) {
 /**
  * Fetch all employee profiles from Firestore /employees
  */
+function isDirectoryStaff(data = {}) {
+  const role = String(data.role || '').toLowerCase()
+  return role !== 'owner' && role !== 'admin' && role !== 'superadmin'
+}
+
 export const getEmployees = async () => {
   const orgId = await currentCircleId()
   if (!orgId) return []
   const snap = await getDocs(query(collection(db, 'employees'), where('orgId', '==', orgId)))
-  return snap.docs.map((d) => {
+  return snap.docs.flatMap((d) => {
     const data = d.data() || {}
-    return {
+    if (!isDirectoryStaff(data)) return []
+    return [{
       uid: d.id,
       employeeId: d.id,
       ...data,
       employeeDocId: d.id,
       identityIds: collectEmployeeIdentityIds(d.id, data),
-    }
+    }]
   })
 }
 
