@@ -97,6 +97,10 @@ revoke all on function private.submit_employee_onboarding(jsonb) from public, an
 grant usage on schema private to authenticated, service_role;
 grant execute on function private.submit_employee_onboarding(jsonb) to authenticated, service_role;
 
+-- A fresh database already has the 00016 version of this function, which
+-- returns public.employee_onboarding. Drop it so the jsonb version can be created.
+drop function if exists public.submit_employee_onboarding(jsonb);
+
 create or replace function public.submit_employee_onboarding(p_answers jsonb)
 returns jsonb
 language sql

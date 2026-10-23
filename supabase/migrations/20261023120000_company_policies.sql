@@ -19,32 +19,47 @@ create index if not exists company_policies_org_idx on public.company_policies (
 alter table public.company_policies enable row level security;
 alter table public.company_policies replica identity full;
 
-drop policy if exists company_policies_select on public.company_policies;
-drop policy if exists company_policies_write on public.company_policies;
+-- These policies use the hosted-only private.member_org_ids_with_roles().
+-- A fresh database built from these migrations keeps the company-circle
+-- policies from 20261014120000 instead.
+do $guard$
+begin
+  if to_regprocedure('private.member_org_ids_with_roles(text[])') is null then
+    return;
+  end if;
 
-create policy company_policies_select on public.company_policies
-  for select to authenticated
-  using (
-    org_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    and org_id::uuid in (
-      select private.member_org_ids_with_roles(array['owner', 'admin', 'employee'])
-    )
-  );
+  execute 'drop policy if exists company_policies_select on public.company_policies';
+  execute 'drop policy if exists company_policies_write on public.company_policies';
 
-create policy company_policies_write on public.company_policies
-  for all to authenticated
-  using (
-    org_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    and org_id::uuid in (
-      select private.member_org_ids_with_roles(array['owner', 'admin'])
-    )
-  )
-  with check (
-    org_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    and org_id::uuid in (
-      select private.member_org_ids_with_roles(array['owner', 'admin'])
-    )
-  );
+  execute $pol$
+    create policy company_policies_select on public.company_policies
+      for select to authenticated
+      using (
+        org_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        and org_id::uuid in (
+          select private.member_org_ids_with_roles(array['owner', 'admin', 'employee'])
+        )
+      )
+  $pol$;
+
+  execute $pol$
+    create policy company_policies_write on public.company_policies
+      for all to authenticated
+      using (
+        org_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        and org_id::uuid in (
+          select private.member_org_ids_with_roles(array['owner', 'admin'])
+        )
+      )
+      with check (
+        org_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        and org_id::uuid in (
+          select private.member_org_ids_with_roles(array['owner', 'admin'])
+        )
+      )
+  $pol$;
+end
+$guard$;
 
 revoke all on table public.company_policies from public, anon;
 grant select, insert, update, delete on table public.company_policies to authenticated, service_role;

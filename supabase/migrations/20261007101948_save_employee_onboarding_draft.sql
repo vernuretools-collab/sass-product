@@ -38,6 +38,9 @@ $$;
 revoke all on function private.save_employee_onboarding_draft(jsonb) from public, anon, authenticated;
 grant execute on function private.save_employee_onboarding_draft(jsonb) to authenticated, service_role;
 
+-- Same as above: replace the 00016 version that returns the row type.
+drop function if exists public.save_employee_onboarding_draft(jsonb);
+
 create or replace function public.save_employee_onboarding_draft(p_answers jsonb)
 returns jsonb
 language sql

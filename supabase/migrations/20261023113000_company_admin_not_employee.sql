@@ -136,8 +136,22 @@ begin
 end;
 $body$;
 
-delete from public.employees e
-using public.org_members m
-where m.user_id = e.user_id
-  and m.org_id = e.org_id
-  and lower(m.role) in ('owner', 'admin');
+-- Hosted (relational) databases only: a fresh database built from these
+-- migrations keeps roles in org_members.data, so m.role does not exist there.
+do $guard$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'org_members' and column_name = 'role'
+  ) then
+    return;
+  end if;
+  execute $sql$
+    delete from public.employees e
+    using public.org_members m
+    where m.user_id = e.user_id
+      and m.org_id = e.org_id
+      and lower(m.role) in ('owner', 'admin')
+  $sql$;
+end
+$guard$;
